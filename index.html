@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>おやすみ電子音</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow column like a bedside device; a lamp-amber ring is the only bright thing on a night-navy ground. Single dark theme by choice (used in bed). */
+:root{
+  --bg:#0e1322;
+  --surface:#161c30;
+  --line:#262e47;
+  --fg:#e6e1d4;
+  --muted:#8e93a6;
+  --accent:#e8b467;
+  --accent-ink:#2b1d07;
+  --accent-dim:rgba(232,180,103,.16);
+  --font-display:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Hiragino Sans",sans-serif;
+  --font-body:"Zen Maru Gothic","Hiragino Sans","Noto Sans JP",sans-serif;
+  --font-num:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  color-scheme:dark;
+}
+html,body{background:var(--bg);color:var(--fg)}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}
+body{margin:0}
+body{font-family:var(--font-body);font-size:15px;line-height:1.6;padding:0 16px;-webkit-tap-highlight-color:transparent}
+.wrap{max-width:440px;margin:0 auto;padding-block:20px 40px;display:flex;flex-direction:column;gap:22px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{font-family:var(--font-display);font-weight:700;font-size:22px;letter-spacing:.04em;margin:0;text-wrap:balance}
+.tag{font-size:12px;color:var(--muted);letter-spacing:.06em}
+
+.stage{display:flex;flex-direction:column;align-items:center;gap:14px}
+.ring{position:relative;width:min(72vw,260px);aspect-ratio:1;max-width:100%}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring .track{stroke:var(--line)}
+.ring .prog{stroke:var(--accent);transition:stroke-dashoffset .4s linear}
+.ring .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.time{font-family:var(--font-num);font-weight:500;font-size:44px;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.state{font-size:13px;color:var(--muted);min-height:1.4em;text-align:center}
+.ring.playing .glow{opacity:1}
+.glow{position:absolute;inset:14%;border-radius:50%;background:radial-gradient(circle,var(--accent-dim),transparent 70%);opacity:0;transition:opacity .8s}
+.play{appearance:none;border:0;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-family:var(--font-display);font-weight:700;font-size:17px;letter-spacing:.08em;padding:14px 44px;cursor:pointer;min-width:180px}
+.play.stop{background:transparent;color:var(--accent);box-shadow:inset 0 0 0 2px var(--accent)}
+.play:focus-visible,.seg button:focus-visible,.reset:focus-visible{outline:2px solid var(--fg);outline-offset:3px}
+
+section.panel{display:flex;flex-direction:column;gap:18px;padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+h2{font-family:var(--font-display);font-size:13px;font-weight:700;letter-spacing:.14em;color:var(--muted);margin:0}
+.field{display:flex;flex-direction:column;gap:8px}
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+label{font-size:14px}
+.val{font-family:var(--font-num);font-size:14px;font-variant-numeric:tabular-nums;color:var(--fg);white-space:nowrap}
+.val small{color:var(--muted);font-size:12px;margin-left:6px}
+input[type=range]{width:100%;accent-color:var(--accent);height:28px;margin:0}
+input[type=range]:disabled{opacity:.4}
+.ticks{display:flex;justify-content:space-between;font-family:var(--font-num);font-size:11px;color:var(--muted);margin-top:-4px}
+.num{width:84px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-family:var(--font-num);font-size:15px;text-align:right}
+.freqrow{display:flex;align-items:center;gap:6px}
+.sub{font-size:12px;color:var(--muted);margin:-2px 0 0}
+
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px}
+.seg button{appearance:none;border:0;background:transparent;color:var(--muted);border-radius:7px;padding:8px 4px;font-family:var(--font-body);font-size:13px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px}
+.seg button svg{width:30px;height:14px}
+.seg button svg path{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round}
+.seg button[aria-pressed=true]{background:var(--accent-dim);color:var(--accent)}
+
+.pattern{display:flex;flex-direction:column;gap:6px}
+canvas{width:100%;height:96px;display:block;border-radius:8px;background:var(--bg)}
+.facts{display:flex;flex-wrap:wrap;gap:6px 16px;font-family:var(--font-num);font-size:12px;color:var(--muted)}
+
+.note{font-size:12.5px;color:var(--muted);line-height:1.7;margin:0}
+.note b{color:var(--fg);font-weight:500}
+.reset{align-self:flex-start;appearance:none;background:none;border:0;color:var(--muted);font-family:var(--font-body);font-size:13px;text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:0;text-align:left}
+@media (prefers-reduced-motion:reduce){.ring .prog,.glow{transition:none}}
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header>
+    <h1>おやすみ電子音</h1>
+    <span class="tag">試作版 v0.4.1 Safari版</span>
+  </header>
+
+  <div class="stage">
+    <div class="ring" id="ring">
+      <div class="glow"></div>
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <circle class="track" cx="50" cy="50" r="46" fill="none" stroke-width="2.5"/>
+        <circle class="prog" id="prog" cx="50" cy="50" r="46" fill="none" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+      <div class="center">
+        <div class="time" id="time">30:00</div>
+        <div class="state" id="state">タイマー 30分</div>
+      </div>
+    </div>
+    <button class="play" id="play" type="button">再生</button>
+  </div>
+
+  <section class="panel" aria-labelledby="h-timer">
+    <h2 id="h-timer">スリープタイマー</h2>
+    <div class="field">
+      <div class="row"><label for="minutes">再生時間</label><span class="val" id="minutesVal">30分</span></div>
+      <input type="range" id="minutes" min="5" max="60" step="5" value="30">
+      <div class="ticks"><span>5</span><span>15</span><span>30</span><span>45</span><span>60</span></div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-sound">
+    <h2 id="h-sound">音の調整 (正弦波, 断続音)</h2>
+
+    <div class="field">
+      <div class="row">
+        <label for="freqNum">音の高さ (周波数)</label>
+        <span class="freqrow"><input class="num" id="freqNum" type="number" inputmode="decimal" min="50" max="4000" step="1" value="440"><span class="val">Hz</span></span>
+      </div>
+      <input type="range" id="freq" min="0" max="1000" step="1" aria-label="周波数スライダー">
+      <div class="ticks"><span>50</span><span>200</span><span>1k</span><span>4k Hz</span></div>
+    </div>
+
+    <div class="field">
+      <div class="row"><label for="period">鳴る間隔 (周期)</label><span class="val" id="periodVal">1.0 s</span></div>
+      <input type="range" id="period" min="0.2" max="5" step="0.1" value="1">
+    </div>
+
+    <div class="field">
+      <div class="row"><label for="tone">1回の鳴る長さ</label><span class="val" id="toneVal">0.20 s</span></div>
+      <input type="range" id="tone" min="0.05" max="0.95" step="0.05" value="0.2">
+    </div>
+
+    <div class="field">
+      <div class="row"><label for="fade">フェードイン</label><span class="val" id="fadeVal">0.100 s</span></div>
+      <input type="range" id="fade" min="0.005" max="0.2" step="0.005" value="0.1">
+      <p class="sub">鳴る長さの内側で立ち上がります. 最大は鳴る長さと同じです.</p>
+    </div>
+
+    <div class="field">
+      <div class="row"><label for="release">フェードアウト (余韻)</label><span class="val" id="releaseVal">0.30 s</span></div>
+      <input type="range" id="release" min="0.01" max="0.78" step="0.01" value="0.3">
+      <p class="sub">鳴る長さの後ろに足され, 休止時間に食い込みます. カーブはどちらも二乗余弦です.</p>
+    </div>
+
+    <div class="field">
+      <div class="row"><label for="vol">音量</label><span class="val" id="volVal">30%<small>約 −34 dBFS</small></span></div>
+      <input type="range" id="vol" min="0" max="100" step="1" value="30">
+    </div>
+
+    <div class="pattern">
+      <canvas id="cv" aria-label="1周期ぶんの振幅エンベロープの図"></canvas>
+      <div class="facts" id="facts"></div>
+    </div>
+
+    <button class="reset" id="reset" type="button">初期値に戻す (440 Hz, 1秒おきに0.2秒, イン0.10 s, アウト0.30 s)</button>
+  </section>
+
+  <p class="note"><b>使い方.</b> Safariで開いて再生してください. ホーム画面に追加すると, ロック中に音が止まることがあります. 音量はiPhone本体のボタンでも調整できます. 再生中に設定を変えると, 音は頭から鳴り直します. 調整した内容はこの端末のSafariに保存されます.</p>
+</div>
+
+<script>
+(function(){
+  const DEFAULTS = {freq:440, period:1.0, tone:0.2, fade:0.1, release:0.3, vol:30, minutes:30};
+  const KEY = 'oyasumi-denshion-safari-v1';
+  let S = Object.assign({}, DEFAULTS);
+  try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved) S = Object.assign(S, saved); } catch(e){}
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} };
+
+  const $ = id => document.getElementById(id);
+  const el = {
+    play:$('play'), time:$('time'), state:$('state'), prog:$('prog'), ring:$('ring'),
+    minutes:$('minutes'), minutesVal:$('minutesVal'),
+    freq:$('freq'), freqNum:$('freqNum'),
+    period:$('period'), periodVal:$('periodVal'),
+    tone:$('tone'), toneVal:$('toneVal'),
+    fade:$('fade'), fadeVal:$('fadeVal'), release:$('release'), releaseVal:$('releaseVal'),
+    vol:$('vol'), volVal:$('volVal'),
+    cv:$('cv'), facts:$('facts'), reset:$('reset')
+  };
+
+  const FMIN = 50, FMAX = 4000;
+  const sliderToFreq = x => FMIN * Math.pow(FMAX/FMIN, x/1000);
+  const freqToSlider = f => Math.round(1000 * Math.log(f/FMIN) / Math.log(FMAX/FMIN));
+  const volToDb = v => (v - 100) * 0.4 - 6;          // 100% -> -6 dBFS, 0.4 dB per step
+  const volToGain = v => v <= 0 ? 0 : Math.pow(10, volToDb(v)/20);
+  const C = 2 * Math.PI * 46;
+  el.prog.style.strokeDasharray = C;
+
+  // raised-cosine (Hann) fade for x in [0,1]
+  function fadeShape(x){ if (x <= 0) return 0; if (x >= 1) return 1; return 0.5 - 0.5 * Math.cos(Math.PI * x); }
+  // [0, fade) rise | [fade, tone) constant | [tone, tone+release) decay tail | rest silent
+  function envAt(t){
+    const T = S.tone, F = S.fade, R = S.release;
+    if (t < 0 || t >= T + R) return 0;
+    if (t < F) return fadeShape(t / F);
+    if (t < T) return 1;
+    return fadeShape(1 - (t - T) / R);
+  }
+
+  function fmtTime(sec){ sec = Math.max(0, Math.ceil(sec)); const m = Math.floor(sec/60), s = sec%60; return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0'); }
+  function setRing(frac){ el.prog.style.strokeDashoffset = C * (1 - Math.max(0, Math.min(1, frac))); }
+  const round3 = x => Math.round(x*1000)/1000;
+
+  function clampAll(){
+    const toneMax = Math.max(0.05, Math.floor((S.period - 0.05) * 20 + 1e-9) / 20);
+    if (S.tone > toneMax) S.tone = toneMax;
+    const fadeMax = round3(Math.max(0.005, Math.floor(S.tone / 0.005 + 1e-9) * 0.005));
+    if (S.fade > fadeMax) S.fade = fadeMax;
+    S.fade = round3(S.fade);
+    const releaseMax = Math.max(0.01, Math.floor((S.period - S.tone - 0.02) * 100 + 1e-9) / 100);
+    if (S.release > releaseMax) S.release = releaseMax;
+    S.release = Math.round(S.release * 100) / 100;
+    return {toneMax, fadeMax, releaseMax};
+  }
+
+  function syncUI(){
+    const {toneMax, fadeMax, releaseMax} = clampAll();
+    el.minutes.value = S.minutes; el.minutesVal.textContent = S.minutes + '分';
+    el.freq.value = freqToSlider(S.freq);
+    if (document.activeElement !== el.freqNum) el.freqNum.value = Math.round(S.freq);
+    el.period.value = S.period; el.periodVal.textContent = S.period.toFixed(1) + ' s';
+    el.tone.max = toneMax; el.tone.value = S.tone; el.toneVal.textContent = S.tone.toFixed(2) + ' s';
+    el.fade.max = fadeMax; el.fade.value = S.fade; el.fadeVal.textContent = S.fade.toFixed(3) + ' s';
+    el.release.max = releaseMax; el.release.value = S.release; el.releaseVal.textContent = S.release.toFixed(2) + ' s';
+    el.volVal.innerHTML = S.vol + '%<small>' + (S.vol > 0 ? '約 ' + volToDb(S.vol).toFixed(0).replace('-', '−') + ' dBFS' : '無音') + '</small>';
+    el.minutes.disabled = playing;
+    if (!playing){ el.time.textContent = fmtTime(S.minutes*60); el.state.textContent = endedMsg || ('タイマー ' + S.minutes + '分'); setRing(1); }
+    const hold = Math.max(0, S.tone - S.fade);
+    el.facts.innerHTML = [
+      'イン ' + S.fade.toFixed(3) + ' s',
+      '一定 ' + hold.toFixed(3) + ' s',
+      'アウト ' + S.release.toFixed(2) + ' s',
+      '無音 ' + Math.max(0, S.period - S.tone - S.release).toFixed(2) + ' s',
+      '1分あたり ' + (60/S.period).toFixed(1).replace(/\.0$/,'') + ' 回'
+    ].map(t => '<span>' + t + '</span>').join('');
+    draw();
+  }
+
+  function draw(pos){
+    const cv = el.cv, dpr = window.devicePixelRatio || 1;
+    const W = cv.clientWidth, H = cv.clientHeight;
+    if (!W) return;
+    if (cv.width !== Math.round(W*dpr)) { cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr); }
+    const g = cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+    const cs = getComputedStyle(document.documentElement);
+    const accent = cs.getPropertyValue('--accent').trim(), muted = cs.getPropertyValue('--muted').trim(), line = cs.getPropertyValue('--line').trim(), fg = cs.getPropertyValue('--fg').trim();
+    const padL = 10, padR = 10, top = 12, base = H - 22, span = W - padL - padR;
+    g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.moveTo(padL, base+.5); g.lineTo(W-padR, base+.5); g.stroke();
+    const h = (base - top) * (0.25 + 0.75 * (S.vol/100));
+    const win = S.period * 2, N = Math.max(200, Math.round(span*2));
+    g.beginPath(); g.moveTo(padL, base);
+    for (let i = 0; i <= N; i++){ const t = win * i / N; g.lineTo(padL + span * i / N, base - h * envAt(t % S.period)); }
+    g.lineTo(padL + span, base); g.closePath();
+    g.fillStyle = accent; g.globalAlpha = 0.28; g.fill();
+    g.globalAlpha = 1; g.strokeStyle = accent; g.lineWidth = 1.5; g.stroke();
+    g.font = '11px "IBM Plex Mono", monospace'; g.fillStyle = muted; g.textBaseline = 'top';
+    g.textAlign = 'left'; g.fillText('0', padL, base + 6);
+    g.textAlign = 'center'; g.fillText('T = ' + S.period.toFixed(1) + ' s', padL + span/2, base + 6);
+    g.textAlign = 'right'; g.fillText('2T', W - padR, base + 6);
+    if (playing && pos != null){
+      const x = padL + span * ((pos % win) / win);
+      g.strokeStyle = fg; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x, top - 6); g.lineTo(x, base); g.stroke();
+    }
+  }
+
+  // ---- audio ----
+  // Main path: a WAV (about 60 s of whole periods) is built in the page, embedded as a data: URL
+  // and looped by an <audio> element, like a music player. iOS ignores audio.volume, so the
+  // volume is written into the samples. If the environment refuses that source, fall back to Web Audio.
+  const SR = 22050;
+  let mode = 'audio';                       // 'audio' | 'webaudio'
+  let audio = null, ctx = null, wsrc = null, wT0 = 0;
+  let playing = false, endAt = 0, startAt = 0, endedMsg = '', raf = 0, iv = 0;
+
+  function onePeriod(){
+    const perLen = Math.round(S.period * SR);
+    const one = new Float32Array(perLen);
+    const w = 2 * Math.PI * S.freq / SR, g = 0.9 * volToGain(S.vol);
+    const soundN = Math.min(perLen, Math.round((S.tone + S.release) * SR));
+    for (let i = 0; i < soundN; i++) one[i] = g * envAt(i / SR) * Math.sin(w * i);
+    return one;
+  }
+
+  function buildDataUrl(){
+    const one = onePeriod(), perLen = one.length;
+    const nPer = Math.max(1, Math.round(60 / S.period)), n = perLen * nPer;
+    const bytes = new Uint8Array(44 + n * 2), v = new DataView(bytes.buffer);
+    const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    str(0,'RIFF'); v.setUint32(4, 36 + n*2, true); str(8,'WAVE'); str(12,'fmt ');
+    v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+    v.setUint32(24,SR,true); v.setUint32(28,SR*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true);
+    str(36,'data'); v.setUint32(40, n*2, true);
+    const pcm = new Int16Array(perLen);
+    for (let i = 0; i < perLen; i++){ const x = Math.max(-1, Math.min(1, one[i])); pcm[i] = Math.round(x * 32767); }
+    const out = new Int16Array(bytes.buffer, 44, n);
+    for (let k = 0; k < nPer; k++) out.set(pcm, k * perLen);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return 'data:audio/wav;base64,' + btoa(bin);
+  }
+
+  function setupMediaSession(){
+    if (!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({title:'おやすみ電子音', artist: S.minutes + '分タイマー'});
+      navigator.mediaSession.setActionHandler('pause', () => finish(false));
+      navigator.mediaSession.setActionHandler('stop', () => finish(false));
+    } catch(e){}
+  }
+
+  // --- audio element path ---
+  function ensureAudio(){
+    if (audio) return;
+    audio = new Audio(); audio.loop = true; audio.preload = 'auto'; audio.setAttribute('playsinline', '');
+    audio.addEventListener('timeupdate', checkEnd);
+    audio.addEventListener('pause', () => { if (mode === 'audio' && playing && Date.now() < endAt - 500 && !swapping) finish(false); });
+    audio.addEventListener('error', () => { if (mode === 'audio' && playing) toWebAudio(); });
+  }
+  function playAudioEl(){
+    ensureAudio();
+    audio.src = buildDataUrl();
+    const p = audio.play();
+    if (p && p.catch) p.catch(err => {
+      if (!playing || mode !== 'audio') return;
+      if (err && err.name === 'NotSupportedError') toWebAudio();
+      else { playing = false; el.state.textContent = '音を再生できませんでした. もう一度押してください.'; resetButton(); console.error(err); }
+    });
+  }
+
+  // --- Web Audio fallback path (loop and stop run on the audio thread) ---
+  function ensureCtx(){
+    if (!ctx){ const AC = window.AudioContext || window.webkitAudioContext; ctx = new AC({sampleRate: SR}); }
+    if (ctx.state !== 'running') ctx.resume().catch(()=>{});
+  }
+  function startWebAudio(){
+    ensureCtx();
+    if (wsrc){ try { wsrc.onended = null; wsrc.stop(); } catch(e){} }
+    const one = onePeriod();
+    const buf = ctx.createBuffer(1, one.length, SR); buf.getChannelData(0).set(one);
+    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; src.connect(ctx.destination);
+    wT0 = ctx.currentTime + 0.03;
+    src.start(wT0); src.stop(wT0 + Math.max(0, (endAt - Date.now()) / 1000));
+    src.onended = () => { if (wsrc === src && playing) finish(Date.now() >= endAt - 1000); };
+    wsrc = src;
+  }
+  function toWebAudio(){
+    mode = 'webaudio';
+    if (audio){ try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch(e){} }
+    startWebAudio();
+    fallbackNote = true; syncUI();
+  }
+  let fallbackNote = false;
+
+  function play(){
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch(e){}
+    playing = true; endedMsg = '';
+    startAt = Date.now(); endAt = startAt + S.minutes * 60000;
+    if (mode === 'audio') playAudioEl(); else startWebAudio();
+    setupMediaSession();
+    el.play.textContent = '停止'; el.play.classList.add('stop'); el.ring.classList.add('playing');
+    clearInterval(iv); iv = setInterval(checkEnd, 1000);
+    syncUI(); tick();
+  }
+
+  function checkEnd(){ if (playing && Date.now() >= endAt) finish(true); }
+
+  function resetButton(){ el.play.textContent = '再生'; el.play.classList.remove('stop'); el.ring.classList.remove('playing'); }
+
+  function finish(natural){
+    if (!playing) return;
+    playing = false;
+    clearInterval(iv); cancelAnimationFrame(raf);
+    if (audio){ try { audio.pause(); audio.currentTime = 0; } catch(e){} }
+    if (wsrc){ try { wsrc.onended = null; wsrc.stop(); } catch(e){} wsrc = null; }
+    endedMsg = natural ? 'タイマー終了. おやすみなさい.' : '';
+    resetButton(); syncUI();
+  }
+
+  function tick(){
+    if (!playing) return;
+    const rem = (endAt - Date.now()) / 1000;
+    if (rem <= 0){ finish(true); return; }
+    el.time.textContent = fmtTime(rem);
+    el.state.textContent = '再生中. ' + new Date(endAt).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}) + ' に停止' + (fallbackNote ? ' (Web Audio)' : '');
+    setRing(rem / ((endAt - startAt) / 1000));
+    const pos = mode === 'audio' ? (audio ? audio.currentTime : null) : (ctx ? Math.max(0, ctx.currentTime - wT0) : null);
+    draw(pos);
+    raf = requestAnimationFrame(tick);
+  }
+
+  // change while playing: rebuild the sound and restart it (a new beep begins)
+  let swapTimer = 0, swapping = false;
+  function soundChanged(){
+    save(); syncUI();
+    if (!playing) return;
+    clearTimeout(swapTimer);
+    swapTimer = setTimeout(() => {
+      if (!playing) return;
+      if (mode === 'webaudio'){ startWebAudio(); return; }
+      swapping = true;
+      audio.src = buildDataUrl();
+      const p = audio.play();
+      const done = () => { swapping = false; };
+      if (p && p.then) p.then(done, err => { done(); if (err && err.name === 'NotSupportedError') toWebAudio(); }); else done();
+    }, 300);
+  }
+
+  el.play.addEventListener('click', () => { playing ? finish(false) : play(); });
+  el.minutes.addEventListener('input', () => { S.minutes = +el.minutes.value; endedMsg=''; save(); syncUI(); });
+  el.freq.addEventListener('input', () => { S.freq = Math.round(sliderToFreq(+el.freq.value)); el.freqNum.value = S.freq; soundChanged(); });
+  el.freqNum.addEventListener('change', () => { let f = parseFloat(el.freqNum.value); if (!isFinite(f)) f = S.freq; S.freq = Math.min(FMAX, Math.max(FMIN, f)); el.freqNum.value = Math.round(S.freq); soundChanged(); });
+  el.period.addEventListener('input', () => { S.period = +el.period.value; soundChanged(); });
+  el.tone.addEventListener('input', () => { S.tone = +el.tone.value; soundChanged(); });
+  el.fade.addEventListener('input', () => { S.fade = +el.fade.value; soundChanged(); });
+  el.release.addEventListener('input', () => { S.release = +el.release.value; soundChanged(); });
+  el.vol.addEventListener('input', () => { S.vol = +el.vol.value; soundChanged(); });
+  el.reset.addEventListener('click', () => { const m = S.minutes; S = Object.assign({}, DEFAULTS, {minutes:m}); el.vol.value = S.vol; soundChanged(); });
+  window.addEventListener('resize', () => draw());
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && playing) { checkEnd(); cancelAnimationFrame(raf); tick(); } });
+
+  el.vol.value = S.vol;
+  syncUI();
+})();
+</script>
+</body>
+</html>
